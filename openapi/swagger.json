@@ -1,7 +1,7 @@
 {
     "openapi": "3.0.2",
     "paths": {
-        "/api//auth/signup": {
+        "/api/user/signup": {
             "post": {
                 "summary": "Create a user account",
                 "tags": [
@@ -62,7 +62,8 @@
                                             "type": "string"
                                         },
                                         "email": {
-                                            "type": "string"
+                                            "type": "string",
+                                            "format": "email"
                                         },
                                         "isEmailVerified": {
                                             "type": "boolean"
@@ -280,13 +281,13 @@
                                                     "type": "string"
                                                 },
                                                 "accessTokenExpiresIn": {
-                                                    "type": "string"
+                                                    "type": "number"
                                                 },
                                                 "refreshToken": {
                                                     "type": "string"
                                                 },
                                                 "refreshTokenExpiresIn": {
-                                                    "type": "string"
+                                                    "type": "number"
                                                 },
                                                 "deviceId": {
                                                     "type": "string"
@@ -477,11 +478,14 @@
                                                 "accessToken": {
                                                     "type": "string"
                                                 },
+                                                "accessTokenExpiresIn": {
+                                                    "type": "number"
+                                                },
                                                 "refreshToken": {
                                                     "type": "string"
                                                 },
                                                 "refreshTokenExpiresIn": {
-                                                    "type": "string"
+                                                    "type": "number"
                                                 },
                                                 "deviceId": {
                                                     "type": "string"
@@ -492,6 +496,7 @@
                                             },
                                             "required": [
                                                 "accessToken",
+                                                "accessTokenExpiresIn",
                                                 "refreshToken",
                                                 "refreshTokenExpiresIn",
                                                 "deviceId",
@@ -849,14 +854,14 @@
                 }
             }
         },
-        "/api/auth/email-verification/send": {
+        "/api/auth/verification/email": {
             "post": {
                 "summary": "Send verification code",
                 "tags": [
                     "auth"
                 ],
                 "parameters": [],
-                "operationId": "sendVerificationCode",
+                "operationId": "reSendVerificationCode",
                 "requestBody": {
                     "description": "Body",
                     "content": {
@@ -954,10 +959,8 @@
                         }
                     }
                 }
-            }
-        },
-        "/api/auth/email-verification/verify": {
-            "post": {
+            },
+            "put": {
                 "summary": "Verify email",
                 "tags": [
                     "auth"
@@ -971,9 +974,9 @@
                             "schema": {
                                 "type": "object",
                                 "properties": {
-                                    "verificationId": {
+                                    "email": {
                                         "type": "string",
-                                        "minLength": 3
+                                        "format": "email"
                                     },
                                     "verificationCode": {
                                         "type": "string",
@@ -983,7 +986,7 @@
                                     }
                                 },
                                 "required": [
-                                    "verificationId",
+                                    "email",
                                     "verificationCode"
                                 ]
                             }
@@ -1362,7 +1365,7 @@
                     "auth"
                 ],
                 "parameters": [],
-                "operationId": "forgotPassword",
+                "operationId": "sendPasswordResetCode",
                 "requestBody": {
                     "description": "Body",
                     "content": {

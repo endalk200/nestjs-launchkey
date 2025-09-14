@@ -71,6 +71,7 @@ export class UsersService {
       });
     }
 
+    this.logger.debug("Emitting user.created event");
     this.eventEmitter.emit(
       "user.created",
       new UserCreatedEvent(user.id, {

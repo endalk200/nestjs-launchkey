@@ -33,12 +33,13 @@ export const VerificationCodeTemplate = ({
         <Container style={container}>
           <Section style={coverSection}>
             <Section style={imageSection}>
-              <Img
-                src={`./static/company-logo.svg`}
-                width="75"
-                height="45"
-                alt="AWS's Logo"
-              />
+              {/* <Img */}
+              {/*   src={`https://react-email-demo-k6qpz0pxq-resend.vercel.app/static/aws-logo.png`} */}
+              {/*   width="75" */}
+              {/*   height="45" */}
+              {/*   alt="AWS's Logo" */}
+              {/* /> */}
+              <Heading style={companyHeader}>Acme</Heading>
             </Section>
             <Section style={upperSection}>
               <Heading style={h1}>Verify your email address</Heading>
@@ -86,6 +87,13 @@ const container = {
   padding: "20px",
   margin: "0 auto",
   backgroundColor: "#eee",
+};
+
+const companyHeader = {
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
+  fontSize: "30px",
+  color: "#FFFF",
 };
 
 const h1 = {

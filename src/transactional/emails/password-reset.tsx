@@ -33,12 +33,13 @@ export const PasswordResetCodeTemplate = ({
         <Container style={container}>
           <Section style={coverSection}>
             <Section style={imageSection}>
-              <Img
-                src={`./static/company-logo.svg`}
-                width="75"
-                height="45"
-                alt="AWS's Logo"
-              />
+              {/* <Img */}
+              {/*   src={`https://react-email-demo-k6qpz0pxq-resend.vercel.app/static/aws-logo.png`} */}
+              {/*   width="75" */}
+              {/*   height="45" */}
+              {/*   alt="AWS's Logo" */}
+              {/* /> */}
+              <Heading style={companyHeader}>{applicationName}</Heading>
             </Section>
             <Section style={upperSection}>
               <Heading style={h1}>Reset Your Password</Heading>
@@ -80,6 +81,13 @@ export default PasswordResetCodeTemplate;
 const main = {
   backgroundColor: "#fff",
   color: "#212121",
+};
+
+const companyHeader = {
+  fontFamily:
+    "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif",
+  fontSize: "30px",
+  color: "#FFFF",
 };
 
 const container = {
