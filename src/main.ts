@@ -14,6 +14,14 @@ async function bootstrap() {
   const configService =
     app.get<ConfigService<IEnvironmentVariables>>(ConfigService);
 
+  app.enableCors({
+    origin: ["http://localhost:3000"], // Allow specific origins (frontend client and server)
+    credentials: true, // Allow sending cookies or authentication headers with the request
+    methods: ["GET", "POST", "PUT", "DELETE"], // Restrict allowed methods
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"], // Allow specific headers
+    preflightContinue: false, // Let the server handle OPTIONS requests
+  });
+
   app.setGlobalPrefix("api");
   app.enableShutdownHooks();
   if (configService.get("ENVIRONMENT", { infer: true }!) != "local") {
@@ -41,6 +49,6 @@ async function bootstrap() {
 
   SwaggerModule.setup("api", app, openApiDocument);
 
-  await app.listen(3000);
+  await app.listen(4000);
 }
 bootstrap();

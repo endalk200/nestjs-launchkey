@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "src/prisma/prisma.service";
-import { safeAwait } from "src/utils";
+import { addMinutesToCurrentTime, safeAwait } from "src/utils";
 import { IEnvironmentVariables } from "src/environmentVariables";
 import { ConfigService } from "@nestjs/config";
 import { v4 as uuidv4 } from "uuid";
@@ -19,15 +19,13 @@ export class BaseAuthService {
     expiresAt: Date;
   } {
     const token = uuidv4(); // Generate a random secure token
-    const expiresAt = new Date();
-    expiresAt.setHours(
-      expiresAt.getHours() +
-        this.configService.get<number>("REFRESH_TOKEN_EXPIRATION_IN_HOURS", {
-          infer: true,
-        })!,
+    const refreshTokenExpiresAt = addMinutesToCurrentTime(
+      this.configService.get<number>("REFRESH_TOKEN_EXPIRATION_IN_MINUTES", {
+        infer: true,
+      })!,
     );
 
-    return { token: token, expiresAt: expiresAt };
+    return { token: token, expiresAt: refreshTokenExpiresAt };
   }
 
   async issueNewTokens() {
@@ -59,6 +57,8 @@ export class BaseAuthService {
     deviceName: string;
   }): Promise<string> {
     const { token, expiresAt } = this.generateRefreshToken();
+
+    this.logger.warn("ExpiresAt:", expiresAt.toISOString());
 
     // TODO: Wrap by safeAwait and handle error properly
     await this.prisma.refreshToken.create({

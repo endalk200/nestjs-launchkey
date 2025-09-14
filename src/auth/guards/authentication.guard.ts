@@ -5,6 +5,7 @@ import {
   Logger,
   UnauthorizedException,
 } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import {
   JsonWebTokenError,
   JwtService,
@@ -14,14 +15,27 @@ import {
 import { Request } from "express";
 import { safeAwait } from "src/utils/safe-await";
 import { JWTPayload } from "../auth.service";
+import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
 
 @Injectable()
 export class AuthenticationGuard implements CanActivate {
   private readonly logger = new Logger(AuthenticationGuard.name);
 
-  constructor(private jwtService: JwtService) {}
+  constructor(
+    private jwtService: JwtService,
+    private reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      // 💡 See this condition
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromHeader(request);
     if (!token) {
@@ -43,7 +57,7 @@ export class AuthenticationGuard implements CanActivate {
         }
       }
       request["user"] = {
-        ...payload,
+        id: payload.sub,
         role: payload.role,
       };
     } catch {

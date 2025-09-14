@@ -14,9 +14,9 @@ export const authContract = c.router(
         200: z.object({
           auth: z.object({
             accessToken: z.string(),
-            accessTokenExpiresIn: z.string(),
+            accessTokenExpiresIn: z.number(),
             refreshToken: z.string(),
-            refreshTokenExpiresIn: z.string(),
+            refreshTokenExpiresIn: z.number(),
             deviceId: z.string(),
             deviceName: z.string(),
           }),
@@ -72,8 +72,9 @@ export const authContract = c.router(
         200: z.object({
           auth: z.object({
             accessToken: z.string(),
+            accessTokenExpiresIn: z.number(),
             refreshToken: z.string(),
-            refreshTokenExpiresIn: z.string(),
+            refreshTokenExpiresIn: z.number(),
             deviceId: z.string(),
             deviceName: z.string(),
           }),
@@ -151,9 +152,9 @@ export const authContract = c.router(
       body: z.object({}),
       summary: "Revoke sessions",
     },
-    sendVerificationCode: {
+    reSendVerificationCode: {
       method: "POST",
-      path: "/email-verification/send",
+      path: "/verification/email",
       responses: {
         200: z.object({
           verificationId: z.string(),
@@ -175,8 +176,8 @@ export const authContract = c.router(
       summary: "Send verification code",
     },
     verifyEmail: {
-      method: "POST",
-      path: "/email-verification/verify",
+      method: "PUT",
+      path: "/verification/email",
       responses: {
         200: z.object({
           message: z.string(),
@@ -192,7 +193,7 @@ export const authContract = c.router(
         }),
       },
       body: z.object({
-        verificationId: z.string().min(3),
+        email: z.string().email(),
         verificationCode: z
           .string()
           .length(6)
@@ -283,7 +284,7 @@ export const authContract = c.router(
       }),
       summary: "Change password during password reset process",
     },
-    forgotPassword: {
+    sendPasswordResetCode: {
       method: "POST",
       path: "/password/forgot",
       body: z.object({

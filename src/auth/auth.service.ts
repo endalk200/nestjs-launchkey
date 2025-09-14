@@ -12,7 +12,7 @@ import { VerificationCodeTemplate } from "src/transactional/emails/email-verific
 import { PasswordResetCodeTemplate } from "src/transactional/emails/password-reset";
 import { v4 as uuidv4 } from "uuid";
 import { BaseAuthService } from "./base/auth.service.base";
-import { generateSixDigitCode } from "src/utils";
+import { addMinutesToCurrentTime, generateSixDigitCode } from "src/utils";
 
 export type JWTPayload = {
   sub: string;
@@ -34,6 +34,46 @@ export class AuthService extends BaseAuthService {
     protected readonly jwtService: JwtService,
   ) {
     super(prisma, configService);
+  }
+
+  async validateUser(data: { email: string; password: string }) {
+    const [userRecord, userRecordError] = await safeAwait(
+      this.prisma.user.findUniqueOrThrow({
+        where: {
+          email: data.email,
+        },
+      }),
+    );
+    if (userRecordError != null) {
+      this.logger.error(`Query User record error`, { error: userRecordError });
+      throw new Error("User record with provided email address doesn't exist");
+    }
+
+    if (!userRecord.isActive) {
+      this.logger.debug(
+        `User: isActive: ${userRecord.isActive} isEmailVerified: ${userRecord.isEmailVerified}`,
+      );
+
+      throw new Error(
+        `The account is not active, ${!userRecord.isEmailVerified ? "Please verify your email address" : "Please contact admin"} to activate your account`,
+      );
+    }
+
+    if (
+      await this.passwordService.compare(data.password, userRecord.password)
+    ) {
+      return {
+        id: userRecord.id,
+        email: userRecord.email,
+        firstName: userRecord.firstName,
+        lastName: userRecord.lastName,
+        role: userRecord.role,
+      };
+    }
+
+    throw new Error(
+      "Invalid credentials provided, please try again with correct credentials.",
+    );
   }
 
   async login(data: { email: string; password: string; userAgent: string }) {
@@ -75,18 +115,16 @@ export class AuthService extends BaseAuthService {
       const JWT_AUDIENCE = this.configService.get("JWT_AUDIENCE", {
         infer: true,
       })!;
-      const ACCESS_TOKEN_EXPIRATION_IN_HOURS = this.configService.get(
-        "ACCESS_TOKEN_EXPIRATION_IN_HOURS",
-        {
+      const accessTokenExpiresAt = addMinutesToCurrentTime(
+        this.configService.get<number>("ACCESS_TOKEN_EXPIRATION_IN_MINUTES", {
           infer: true,
-        },
-      )!;
-      const REFRESH_TOKEN_EXPIRATION_IN_HOURS = this.configService.get(
-        "REFRESH_TOKEN_EXPIRATION_IN_HOURS",
-        {
+        })!,
+      );
+      const refreshTokenExpiresAt = addMinutesToCurrentTime(
+        this.configService.get<number>("REFRESH_TOKEN_EXPIRATION_IN_MINUTES", {
           infer: true,
-        },
-      )!;
+        })!,
+      );
 
       const deviceId = uuidv4();
       const deviceName = data.userAgent;
@@ -110,8 +148,8 @@ export class AuthService extends BaseAuthService {
           refreshToken: refreshToken,
           deviceId: deviceId,
           deviceName: deviceName,
-          accessTokenExpiresIn: ACCESS_TOKEN_EXPIRATION_IN_HOURS.toString(),
-          refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRATION_IN_HOURS.toString(),
+          accessTokenExpiresIn: accessTokenExpiresAt.getTime(),
+          refreshTokenExpiresIn: refreshTokenExpiresAt.getTime(),
         },
         user: userRecord,
       };
@@ -136,7 +174,74 @@ export class AuthService extends BaseAuthService {
     );
     if (userRecordError != null) {
       this.logger.error(`Query User record error`, { error: userRecordError });
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw userRecordError;
+    }
+
+    if (userRecord.isEmailVerified) {
+      this.logger.error(
+        `Account associated with email ${data.email} is already verified`,
+      );
+      throw new Error(`The email address is already verified`);
+    }
+
+    const verificationCode = generateSixDigitCode();
+    const expiresAt = addMinutesToCurrentTime(
+      this.configService.get("VERIFICATION_CODE_EXPIRATION_IN_MINUTES", {
+        infer: true,
+      })!,
+    );
+
+    const [, verificationRecordError] = await safeAwait(
+      this.prisma.emailVerification.create({
+        data: {
+          userId: userRecord.id,
+          code: verificationCode,
+          expiresAt: expiresAt,
+        },
+      }),
+    );
+    if (verificationRecordError != null) {
+      this.logger.error(`Add EmailVerification record error`, {
+        error: verificationRecordError,
+      });
+
+      throw verificationRecordError;
+    }
+
+    const resend = new Resend(
+      this.configService.get("RESEND_API_KEY", { infer: true })!,
+    );
+
+    resend.emails.send({
+      from: this.configService.getOrThrow("FROM_EMAIL", { infer: true })!,
+      to: data.email,
+      subject: "Verify your email",
+      react: VerificationCodeTemplate({
+        applicationName: this.configService.get("APPLICATION_NAME", {
+          infer: true,
+        })!,
+        code: verificationCode,
+        supportEmail: this.configService.get("SUPPORT_EMAIL", { infer: true })!,
+        expirationInMinutes: this.configService
+          .get("VERIFICATION_CODE_EXPIRATION_IN_MINUTES", {
+            infer: true,
+          })!
+          .toString(),
+      }),
+    });
+  }
+
+  async reSendEmailVerificationCode(data: { email: string }) {
+    const [userRecord, userRecordError] = await safeAwait(
+      this.prisma.user.findUniqueOrThrow({
+        where: {
+          email: data.email,
+        },
+      }),
+    );
+    if (userRecordError != null) {
+      this.logger.error(`Query User record error`, { error: userRecordError });
+      throw new TsRestException(authContract.reSendVerificationCode, {
         status: 404,
         body: {
           message: "Account not found",
@@ -148,7 +253,7 @@ export class AuthService extends BaseAuthService {
       this.logger.error(
         `Account associated with email ${data.email} is already verified`,
       );
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.reSendVerificationCode, {
         status: 400,
         body: {
           message: "The account is already verified",
@@ -157,13 +262,10 @@ export class AuthService extends BaseAuthService {
     }
 
     const verificationCode = generateSixDigitCode();
-    const expiresAt = new Date();
-    expiresAt.setMinutes(
-      expiresAt.getMinutes() +
-        this.configService.get("VERIFICATION_CODE_EXPIRATION_IN_MINUTES", {
-          infer: true,
-          default: 15,
-        })!,
+    const expiresAt = addMinutesToCurrentTime(
+      this.configService.get("VERIFICATION_CODE_EXPIRATION_IN_MINUTES", {
+        infer: true,
+      })!,
     );
 
     const [verificationRecord, verificationRecordError] = await safeAwait(
@@ -181,7 +283,7 @@ export class AuthService extends BaseAuthService {
       });
       console.log(verificationRecordError);
       console.log(expiresAt);
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.reSendVerificationCode, {
         status: 500,
         body: {
           message:
@@ -207,8 +309,7 @@ export class AuthService extends BaseAuthService {
         expirationInMinutes: this.configService
           .get("VERIFICATION_CODE_EXPIRATION_IN_MINUTES", {
             infer: true,
-            default: 15,
-          })
+          })!
           .toString(),
       }),
     });
@@ -219,31 +320,22 @@ export class AuthService extends BaseAuthService {
     };
   }
 
-  async verifyEmail(data: {
-    verificationId: string;
-    verificationCode: string;
-  }) {
-    const [verificationRecord, verificationRecordError] = await safeAwait(
-      this.prisma.emailVerification.findUniqueOrThrow({
+  async verifyEmail(data: { email: string; verificationCode: string }) {
+    const [userRecord, userRecordError] = await safeAwait(
+      this.prisma.user.findUniqueOrThrow({
         where: {
-          id: data.verificationId,
+          email: data.email,
         },
         include: {
-          user: {
-            select: {
-              id: true,
-              isEmailVerified: true,
-              isActive: true,
-            },
-          },
+          emailVerification: true,
         },
       }),
     );
-    if (verificationRecordError != null) {
+    if (userRecordError != null) {
       this.logger.error(`Query EmailVerification record error`, {
-        error: verificationRecordError,
+        error: userRecordError,
       });
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.verifyEmail, {
         status: 404,
         body: {
           message: "No verification record was found",
@@ -251,9 +343,9 @@ export class AuthService extends BaseAuthService {
       });
     }
 
-    if (verificationRecord.user.isEmailVerified) {
+    if (userRecord.isEmailVerified) {
       this.logger.error(`This account is already verified`);
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.verifyEmail, {
         status: 400,
         body: {
           message: "The account is already verified",
@@ -261,9 +353,9 @@ export class AuthService extends BaseAuthService {
       });
     }
 
-    if (data.verificationCode !== verificationRecord.code) {
+    if (data.verificationCode !== userRecord.emailVerification.code) {
       this.logger.error(`Verification code mismatch`);
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.verifyEmail, {
         status: 400,
         body: {
           message: "The provided verification code does not match",
@@ -272,9 +364,9 @@ export class AuthService extends BaseAuthService {
     }
 
     const currentTime = new Date();
-    if (currentTime > verificationRecord.expiresAt) {
+    if (currentTime > userRecord.emailVerification.expiresAt) {
       this.logger.error(`Verification code has expired`);
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.verifyEmail, {
         status: 400,
         body: {
           message: "Verification code has expired",
@@ -285,7 +377,7 @@ export class AuthService extends BaseAuthService {
     const [, updateUserRecordError] = await safeAwait(
       this.prisma.user.update({
         where: {
-          id: verificationRecord.user.id,
+          id: userRecord.id,
         },
         data: {
           isActive: true,
@@ -297,7 +389,7 @@ export class AuthService extends BaseAuthService {
       this.logger.error(`Update User record error`, {
         error: updateUserRecordError,
       });
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.verifyEmail, {
         status: 500,
         body: {
           message: "Something went wrong while verifying your email",
@@ -318,7 +410,7 @@ export class AuthService extends BaseAuthService {
     );
     if (userRecordError != null) {
       this.logger.error(`Query User record error`, { error: userRecordError });
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.sendPasswordResetCode, {
         status: 404,
         body: {
           message: "Account not found",
@@ -327,15 +419,11 @@ export class AuthService extends BaseAuthService {
     }
 
     const resetCode = generateSixDigitCode();
-    const expiresAt = new Date(
-      Date.now() +
-        this.configService.get("PASSWORD_RESET_CODE_EXPIRATION_IN_MINUTES", {
-          infer: true,
-          default: 15,
-        })! *
-          60 *
-          1000,
-    ); // Convert hours into seconds
+    const expiresAt = addMinutesToCurrentTime(
+      this.configService.get("PASSWORD_RESET_CODE_EXPIRATION_IN_MINUTES", {
+        infer: true,
+      })!,
+    );
 
     const [resetRecord, resetRecordError] = await safeAwait(
       this.prisma.passwordReset.create({
@@ -350,7 +438,7 @@ export class AuthService extends BaseAuthService {
       this.logger.error(`Add PasswordReset record error`, {
         error: resetRecordError,
       });
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.sendPasswordResetCode, {
         status: 500,
         body: {
           message: "Something went wrong while trying to send reset code",
@@ -375,8 +463,7 @@ export class AuthService extends BaseAuthService {
         expirationInMinutes: this.configService
           .get("PASSWORD_RESET_CODE_EXPIRATION_IN_MINUTES", {
             infer: true,
-            default: 15,
-          })
+          })!
           .toString(),
       }),
     });
@@ -410,7 +497,7 @@ export class AuthService extends BaseAuthService {
       this.logger.error(`Query [PasswordReset] record error`, {
         error: resetRecordError,
       });
-      throw new TsRestException(authContract.sendVerificationCode, {
+      throw new TsRestException(authContract.sendPasswordResetCode, {
         status: 404,
         body: {
           message: "No password reset record was found",
@@ -506,9 +593,12 @@ export class AuthService extends BaseAuthService {
       }),
     );
     if (refreshTokenRecordError != null) {
-      this.logger.error(`Query [RefreshToken] record error`, {
-        error: refreshTokenRecordError,
-      });
+      this.logger.error(
+        `Query [RefreshToken] record error ${JSON.stringify(data.refreshToken)}`,
+        {
+          error: refreshTokenRecordError,
+        },
+      );
       throw new TsRestException(authContract.refreshToken, {
         status: 401,
         body: {
@@ -524,18 +614,16 @@ export class AuthService extends BaseAuthService {
       const JWT_AUDIENCE = this.configService.get("JWT_AUDIENCE", {
         infer: true,
       })!;
-      const ACCESS_TOKEN_EXPIRATION_IN_HOURS = this.configService.get(
-        "ACCESS_TOKEN_EXPIRATION_IN_HOURS",
-        {
+      const accessTokenExpiresAt = addMinutesToCurrentTime(
+        this.configService.get<number>("ACCESS_TOKEN_EXPIRATION_IN_MINUTES", {
           infer: true,
-        },
-      )!;
-      const REFRESH_TOKEN_EXPIRATION_IN_HOURS = this.configService.get(
-        "REFRESH_TOKEN_EXPIRATION_IN_HOURS",
-        {
+        })!,
+      );
+      const refreshTokenExpiresAt = addMinutesToCurrentTime(
+        this.configService.get<number>("REFRESH_TOKEN_EXPIRATION_IN_MINUTES", {
           infer: true,
-        },
-      )!;
+        })!,
+      );
 
       const payload = {
         sub: refreshTokenRecord.user.id,
@@ -569,8 +657,8 @@ export class AuthService extends BaseAuthService {
           refreshToken: refreshToken,
           deviceId: deviceId,
           deviceName: deviceName,
-          accessTokenExpiresIn: ACCESS_TOKEN_EXPIRATION_IN_HOURS.toString(),
-          refreshTokenExpiresIn: REFRESH_TOKEN_EXPIRATION_IN_HOURS.toString(),
+          accessTokenExpiresIn: accessTokenExpiresAt.getTime(),
+          refreshTokenExpiresIn: refreshTokenExpiresAt.getTime(),
         },
       };
     }
@@ -624,7 +712,7 @@ export class AuthService extends BaseAuthService {
       }),
     );
     if (userRecordError != null) {
-      this.logger.error(`Query [User] record error`, {
+      this.logger.error(`Query [User] record error with userId: ${userId}`, {
         error: userRecordError,
       });
       throw new TsRestException(authContract.me, {
@@ -650,7 +738,7 @@ export class AuthService extends BaseAuthService {
       }),
     );
     if (userRecordError != null) {
-      this.logger.error(`Query [User] record error`, {
+      this.logger.error(`Query [User] record error with id ${userId}`, {
         error: userRecordError,
       });
       throw new TsRestException(authContract.me, {

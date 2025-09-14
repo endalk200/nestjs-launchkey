@@ -55,7 +55,7 @@ export class AuthController {
   async logout(@Req() req: Request) {
     return tsRestHandler(authContract.logout, async ({ headers }) => {
       const auth = await this.service.logout({
-        userId: req["user"]["sub"],
+        userId: req["user"]["id"],
         deviceId: headers["x-device-id"],
         refreshToken: headers["x-refresh-token"],
       });
@@ -64,15 +64,17 @@ export class AuthController {
     });
   }
 
-  @TsRestHandler(authContract.sendVerificationCode, {
+  @TsRestHandler(authContract.reSendVerificationCode, {
     validateRequestBody: true,
     validateResponses: true,
   })
-  async sendVerificationCode() {
+  // @UseGuards(ThrottlerGuard)
+  // @Throttle({ default: { limit: 3, ttl: 2000 } })
+  async reSendEmailVerificationCode() {
     return tsRestHandler(
-      authContract.sendVerificationCode,
+      authContract.reSendVerificationCode,
       async ({ body }) => {
-        const auth = await this.service.sendEmailVerificationCode({
+        const auth = await this.service.reSendEmailVerificationCode({
           email: body.email,
         });
 
@@ -90,7 +92,7 @@ export class AuthController {
   async verifyEmail() {
     return tsRestHandler(authContract.verifyEmail, async ({ body }) => {
       const auth = await this.service.verifyEmail({
-        verificationId: body.verificationId,
+        email: body.email,
         verificationCode: body.verificationCode,
       });
 
@@ -98,18 +100,21 @@ export class AuthController {
     });
   }
 
-  @TsRestHandler(authContract.forgotPassword, {
+  @TsRestHandler(authContract.sendPasswordResetCode, {
     validateRequestBody: true,
     validateResponses: true,
   })
   async forgotPassword() {
-    return tsRestHandler(authContract.forgotPassword, async ({ body }) => {
-      const auth = await this.service.sendPasswordResetCode({
-        email: body.email,
-      });
+    return tsRestHandler(
+      authContract.sendPasswordResetCode,
+      async ({ body }) => {
+        const auth = await this.service.sendPasswordResetCode({
+          email: body.email,
+        });
 
-      return { status: 200, body: auth };
-    });
+        return { status: 200, body: auth };
+      },
+    );
   }
 
   @TsRestHandler(authContract.resetPassword, {
@@ -139,7 +144,7 @@ export class AuthController {
   })
   async me(@Req() req: Request) {
     return tsRestHandler(authContract.me, async ({}) => {
-      const me = await this.service.me(req["user"]["sub"]);
+      const me = await this.service.me(req["user"]["id"]);
 
       return { status: 200, body: me };
     });
@@ -156,9 +161,8 @@ export class AuthController {
   })
   async getActiveSessions(@Req() req: Request) {
     return tsRestHandler(authContract.currentSessions, async ({}) => {
-      const sessions = await this.service.getCurrentActiveSessions(
-        req["user"]["sub"],
-      );
+      const userId = req["user"]["id"];
+      const sessions = await this.service.getCurrentActiveSessions(userId);
 
       return { status: 200, body: sessions };
     });
@@ -176,7 +180,7 @@ export class AuthController {
   async revokeSession(@Req() req: Request) {
     return tsRestHandler(authContract.revokeSession, async ({ params }) => {
       const auth = await this.service.revokeSession({
-        userId: req["user"]["sub"],
+        userId: req["user"]["id"],
         sessionId: params.sessionId,
       });
 
@@ -188,6 +192,7 @@ export class AuthController {
     validateRequestBody: true,
     validateResponses: true,
   })
+  // @Public()
   @UseGuards(AuthenticationGuard, AuthorizationGuard)
   @Permissions({
     resource: "User",
@@ -196,7 +201,7 @@ export class AuthController {
   async changePassword(@Req() req: Request) {
     return tsRestHandler(authContract.changePassword, async ({ body }) => {
       const response = await this.service.changePassword({
-        userId: req["user"]["sub"],
+        userId: req["user"]["id"],
         newPassword: body.newPassword,
       });
 
