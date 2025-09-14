@@ -33,7 +33,7 @@
     "@nestjs/terminus": "^10.2.3",
     "@nestjs/throttler": "^6.2.1",
     "@prisma/client": "^6.2.1",
-    "@react-email/components": "^0.0.28",
+    "@react-email/components": "^0.5.3",
     "@ts-rest/core": "^3.49.3",
     "@ts-rest/nest": "^3.49.3",
     "@ts-rest/open-api": "^3.49.3",
