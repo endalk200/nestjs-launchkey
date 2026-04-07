@@ -24,7 +24,7 @@
     "@nestjs/axios": "^3.0.3",
     "@nestjs/common": "^10.4.20",
     "@nestjs/config": "^3.2.3",
-    "@nestjs/core": "^11.1.11",
+    "@nestjs/core": "^11.1.18",
     "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/platform-express": "^11.1.11",
